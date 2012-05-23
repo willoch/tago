@@ -1,16 +1,12 @@
 /*
-
  Tago "Emacs etags for Go"
- Author: Alex Combas
- Website: www.goplexian.com
- Email: alex.combas@gmail.com
+ Author: Thorbjørn Willoch
+ Email: thwilloch@gmail.com
  Version: 1.0
- Alex Combas 2010
- Initial release: January 03 2010
- Thorbjørn Willoch 2012
+ Based on work done by:
+ 	Alex Combas 2010
+	 Initial release: January 03 2010
  Update Mai 22 2012
- See README for usage, compiling, and other info.
-
 */
 
 package main
@@ -22,7 +18,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
-	"go/printer"
 	"go/token"
 	"io"
 	"os"
@@ -44,7 +39,8 @@ func whereAmI() string {
 var (
 	saveDir = flag.String("d", whereAmI(),
 				"Change save directory: -d=/path/to/my/tags/")
-	tagsName           = flag.String("n", "TAGS", "Change TAGS name: -n=MyTagsFile")
+	tagsName           = flag.String("o",
+		"TAGS", "Change TAGS name: -o=MyTagsFile")
 	appendMode         = flag.Bool("a", false, "Append mode: -a")
 	fset               *token.FileSet
 	contentCurrentFile []string
@@ -101,7 +97,7 @@ func theReceiver(leaf *ast.FuncDecl) (ret string) {
 		case *ast.Ident:
 			return x.Name
 		}
-		fmt.Printf("%#v\n", leaf.Recv.List[0].Type)
+		fmt.Printf("Should not come here %#v\n", leaf.Recv.List[0].Type)
 	}
 	return
 }
@@ -134,13 +130,6 @@ func readCurrentFile(name string) (ret []string) {
 }
 
 
-func dumpSomeThing(x interface{}) {
-	fmt.Printf("This is for : %#v", x)
-	var buffer bytes.Buffer
-	printer.Fprint(&buffer, fset, x)
-	fmt.Println(&buffer)
-}
-
 // Parses the source files given on the commandline,
 // returns a TAGS chunk for each file
 func brew() string {
@@ -150,7 +139,8 @@ func brew() string {
 		teaCup := Tea{}
 		ptree, perr := parser.ParseFile(fset, flag.Arg(i), nil, 0)
 		if perr != nil {
-			fmt.Println("Error parsing file ", flag.Arg(i), ": ", perr.Error())
+			fmt.Println("Error parsing file ",
+				flag.Arg(i), ": ", perr.Error())
 			continue
 		}
 		contentCurrentFile = readCurrentFile(flag.Arg(i))
@@ -158,7 +148,8 @@ func brew() string {
 		for _, l := range ptree.Decls {
 			switch leaf := l.(type) {
 			case *ast.FuncDecl:
-				teaCup.drink(leaf.Name, pkgName, theReceiver(leaf))
+				teaCup.drink(leaf.Name, pkgName,
+					theReceiver(leaf))
 			case *ast.GenDecl:
 				for _, c := range leaf.Specs {
 					switch cell := c.(type) {
@@ -183,7 +174,7 @@ func main() {
 	flag.Parse()
 	if flag.NArg() == 0 {
 		fmt.Printf(
-			"Usage: %s [-a] [-h] [-d directory] [-n=TagsFile] source.go ...\n",
+			"Usage: %s [-a] [-h] [-d directory] [-o TagsFile] source.go ...\n",
 			os.Args[0])
 		return
 	}
