@@ -22,36 +22,44 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 	"unicode/utf8"
 )
+
+type lineAndPos struct {
+	p int
+	l string
+}
 
 var (
 	fullTag        = flag.Bool("f", false, "make package.type.Ident tags for receivers")
 	tagsName       = flag.String("o", "TAGS", "Change TAGS name: -o=MyTagsFile")
 	appendMode     = flag.Bool("a", false, "Append mode: -a")
 	fset           *token.FileSet
-	contentCurrent []string
+	contentCurrent []lineAndPos
 )
 
 type Buffer struct {
 	bytes.Buffer
 }
 
-func LineAndPos(lineno int) (line string, pos int) {
-	for i, v := range contentCurrent {
-		pos += utf8.RuneCountInString(v)
-		if i == lineno-1 {
-			return v[:len(v)-1], pos
-		}
+func LineAndPos(lineno int, ident string) (line string, pos int) {
+	if lineno > len(contentCurrent) {
+		return "Something Rotten! (probably //line declerations)", 0
 	}
-	return
+	v := contentCurrent[lineno-1]
+	p := strings.Index(v.l, ident)
+	if p == -1 {
+		return v.l[:len(v.l)-1], v.p
+	}
+	return v.l[:p+len(ident)+1], v.p
 }
 
 // Writes a TAGS line to a Buffer buffer
 func (t *Buffer) tagLine(leaf *ast.Ident, pkgname, rcvname string) {
 	P := fset.Position(leaf.NamePos)
 	n, l := leaf.String(), P.Line
-	s, o := LineAndPos(P.Line)
+	s, o := LineAndPos(P.Line, n)
 	beforedot := pkgname
 	if rcvname != "" {
 		beforedot = rcvname
@@ -90,20 +98,22 @@ func theReceiver(leaf *ast.FuncDecl) (ret string) {
 	return
 }
 
-func readCurrentFile(name string) (ret []string) {
-	ret = make([]string, 0, 2000)
+func readCurrentFile(name string) (ret []lineAndPos) {
+	ret = make([]lineAndPos, 0, 2000)
 	file, err := os.Open(name)
 	if err != nil {
 		log.Fatalf("Error opening file in readCurrentFile(%s): %s\n", name, err)
 	}
 	defer file.Close()
 	r := bufio.NewReader(file)
+	p := 0
 	for {
 		switch n, e := r.ReadString('\n'); e {
 		case io.EOF:
 			return
 		case nil:
-			ret = append(ret, n)
+			ret = append(ret, lineAndPos{p, n})
+			p += utf8.RuneCountInString(n)
 		default:
 			fmt.Println("Error reading ", file, " : ", e)
 			return
@@ -162,6 +172,9 @@ func init() {
 			os.Args[0])
 	}
 }
+func nothing()
+
+var noe int
 
 func main() {
 	f := getFile()
