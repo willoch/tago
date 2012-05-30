@@ -119,6 +119,7 @@ func readCurrentFile(name string) (ret []lineAndPos) {
 			return
 		}
 	}
+	return
 }
 
 // Parses the source files given on the commandline,
