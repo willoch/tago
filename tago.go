@@ -39,11 +39,11 @@ var (
 	contentCurrent []lineAndPos
 )
 
-type Buffer struct {
+type buffer struct {
 	bytes.Buffer
 }
 
-func LineAndPos(lineno int, ident string) (line string, pos int) {
+func lineANDpos(lineno int, ident string) (line string, pos int) {
 	if lineno > len(contentCurrent) {
 		return "Something Rotten! (probably //line declerations)", 0
 	}
@@ -55,11 +55,11 @@ func LineAndPos(lineno int, ident string) (line string, pos int) {
 	return v.l[:p+len(ident)+1], v.p
 }
 
-// Writes a TAGS line to a Buffer buffer
-func (t *Buffer) tagLine(leaf *ast.Ident, pkgname, rcvname string) {
+// Writes a TAGS line to a buffer buffer
+func (t *buffer) tagLine(leaf *ast.Ident, pkgname, rcvname string) {
 	P := fset.Position(leaf.NamePos)
 	n, l := leaf.String(), P.Line
-	s, o := LineAndPos(P.Line, n)
+	s, o := lineANDpos(P.Line, n)
 	beforedot := pkgname
 	if rcvname != "" {
 		beforedot = rcvname
@@ -124,7 +124,7 @@ func readCurrentFile(name string) (ret []lineAndPos) {
 
 // Parses the source files given on the commandline,
 // returns a TAGS chunk for each file
-func iterateGenDecl(leaf *ast.GenDecl, pkgName string, fileBuffer *Buffer) {
+func iterateGenDecl(leaf *ast.GenDecl, pkgName string, fileBuffer *buffer) {
 	for _, c := range leaf.Specs {
 		switch cell := c.(type) {
 		case *ast.TypeSpec:
@@ -137,7 +137,7 @@ func iterateGenDecl(leaf *ast.GenDecl, pkgName string, fileBuffer *Buffer) {
 	}
 }
 
-func iterateParsedFile(ptree *ast.File, fileBuffer *Buffer) {
+func iterateParsedFile(ptree *ast.File, fileBuffer *buffer) {
 	pkgName := ptree.Name.Name
 	for _, l := range ptree.Decls {
 		switch leaf := l.(type) {
@@ -159,7 +159,7 @@ func parseFiles(outfile *os.File) {
 		}
 		contentCurrent = readCurrentFile(file)
 
-		fileBuffer := Buffer{}
+		fileBuffer := buffer{}
 		iterateParsedFile(ptree, &fileBuffer)
 		totalBytes := fileBuffer.Len()
 		fmt.Fprintf(outfile, "\f\n%s,%d\n%s", file, totalBytes, &fileBuffer)
@@ -173,9 +173,7 @@ func init() {
 			os.Args[0])
 	}
 }
-func nothing()
 
-var noe int
 
 func main() {
 	f := getFile()
