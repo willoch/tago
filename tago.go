@@ -32,22 +32,23 @@ type lineAndPos struct {
 }
 
 var (
-	fullTag        = flag.Bool("f", false, "make package.type.Ident tags for receivers")
-	tagsName       = flag.String("o", "TAGS", "Change TAGS name: -o=MyTagsFile")
-	appendMode     = flag.Bool("a", false, "Append mode: -a")
-	fset           *token.FileSet
-	contentCurrent []lineAndPos
+	fullTag    = flag.Bool("f", false, "make package.type.Ident tags for receivers")
+	tagsName   = flag.String("o", "TAGS", "Change TAGS name: -o=MyTagsFile")
+	appendMode = flag.Bool("a", false, "Append mode: -a")
 )
 
 type buffer struct {
 	bytes.Buffer
+	file           string
+	fset           *token.FileSet
+	contentCurrent []lineAndPos
 }
 
-func lineANDpos(lineno int, ident string) (line string, pos int) {
-	if lineno > len(contentCurrent) {
+func (t *buffer) lineANDpos(lineno int, ident string) (line string, pos int) {
+	if lineno > len(t.contentCurrent) {
 		return "Something Rotten! (probably //line declerations)", 0
 	}
-	v := contentCurrent[lineno-1]
+	v := t.contentCurrent[lineno-1]
 	p := strings.Index(v.l, ident)
 	if p == -1 {
 		return v.l[:len(v.l)-1], v.p
@@ -57,9 +58,9 @@ func lineANDpos(lineno int, ident string) (line string, pos int) {
 
 // Writes a TAGS line to a buffer buffer
 func (t *buffer) tagLine(leaf *ast.Ident, pkgname, rcvname string) {
-	P := fset.Position(leaf.NamePos)
+	P := t.fset.Position(leaf.NamePos)
 	n, l := leaf.String(), P.Line
-	s, o := lineANDpos(P.Line, n)
+	s, o := t.lineANDpos(P.Line, n)
 	beforedot := pkgname
 	if rcvname != "" {
 		beforedot = rcvname
@@ -149,22 +150,44 @@ func iterateParsedFile(ptree *ast.File, fileBuffer *buffer) {
 	}
 }
 
-func parseFiles(outfile *os.File) {
-	for _, file := range flag.Args() {
-		fset = token.NewFileSet()
-		ptree, perr := parser.ParseFile(fset, file, nil, 0)
-		if perr != nil {
-			log.Println("Error parsing file ", file, ": ", perr)
-			continue
-		}
-		contentCurrent = readCurrentFile(file)
+func parseFile(file string) *buffer {
+	fileBuffer := buffer{file: file, fset: token.NewFileSet()}
+	ptree, perr := parser.ParseFile(fileBuffer.fset, file, nil, 0)
+	if perr != nil {
+		log.Println("Error parsing file ", file, ": ", perr)
+		return nil
+	}
+	fileBuffer.contentCurrent = readCurrentFile(file)
+	iterateParsedFile(ptree, &fileBuffer)
+	return &fileBuffer
+}
 
-		fileBuffer := buffer{}
-		iterateParsedFile(ptree, &fileBuffer)
-		totalBytes := fileBuffer.Len()
-		fmt.Fprintf(outfile, "\f\n%s,%d\n%s", file, totalBytes, &fileBuffer)
+func parseFiles(outfile *os.File) {
+	c := make(chan *buffer,16)
+	f := make(chan string,16)
+	for i := 0; i != 8; i++ {
+		go func() {
+			for file := range f {
+				c <- parseFile(file)
+			}
+		}()
+	}
+	go func() {
+		for _, file := range flag.Args() {
+			f <- file
+		}
+		close(f)
+	}()
+
+	for i, n := 0, len(flag.Args()); i != n; i++ {
+		if fileBuffer := <-c; fileBuffer != nil {
+			totalBytes := fileBuffer.Len()
+			fmt.Fprintf(outfile, "\f\n%s,%d\n%s", fileBuffer.file,
+				totalBytes, fileBuffer)
+		}
 	}
 }
+
 func init() {
 	log.SetFlags(0)
 	flag.Parse()
@@ -173,7 +196,6 @@ func init() {
 			os.Args[0])
 	}
 }
-
 
 func main() {
 	f := getFile()
