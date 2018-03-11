@@ -6,7 +6,8 @@
  Based on work done by:
  	Alex Combas 2010
 	 Initial release: January 03 2010
- Updated May 22 2012
+ Updated March 9 2018
+Changes from Jon Dilley
 */
 
 package main
@@ -33,8 +34,9 @@ type lineAndPos struct {
 
 var (
 	fullTag    = flag.Bool("f", false, "make package.type.Ident tags for receivers")
-	tagsName   = flag.String("o", "TAGS", "Change TAGS name: -o=MyTagsFile")
-	appendMode = flag.Bool("a", false, "Append mode: -a")
+	tagsName   = flag.String("o", "TAGS", "Change TAGS name")
+	appendMode = flag.Bool("a", false, "Append mode ")
+	fileList   = flag.String("i", "", "List of filenames to tagify, default empty reads Args")
 )
 
 type buffer struct {
@@ -120,7 +122,6 @@ func readCurrentFile(name string) (ret []lineAndPos) {
 			return
 		}
 	}
-	return
 }
 
 // Parses the source files given on the commandline,
@@ -154,7 +155,7 @@ func parseFile(file string) *buffer {
 	fileBuffer := buffer{file: file, fset: token.NewFileSet()}
 	ptree, perr := parser.ParseFile(fileBuffer.fset, file, nil, 0)
 	if perr != nil {
-		log.Println("Error parsing file ", file, ": ", perr)
+		log.Println(perr)
 		return nil
 	}
 	fileBuffer.contentCurrent = readCurrentFile(file)
@@ -163,8 +164,24 @@ func parseFile(file string) *buffer {
 }
 
 func parseFiles(outfile *os.File) {
-	c := make(chan *buffer,16)
-	f := make(chan string,16)
+	c := make(chan *buffer, 16)
+	f := make(chan string, 16)
+	var filenames []string
+	if len(*fileList) > 0 {
+		fnf, err := os.OpenFile(*fileList, os.O_RDONLY, 0)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer fnf.Close()
+		s := bufio.NewScanner(fnf)
+		for s.Scan() {
+			filenames = append(filenames, s.Text())
+		}
+	}
+	// Append any command line arguments
+	for _, a := range flag.Args() {
+		filenames = append(filenames, a)
+	}
 	for i := 0; i != 8; i++ {
 		go func() {
 			for file := range f {
@@ -173,13 +190,13 @@ func parseFiles(outfile *os.File) {
 		}()
 	}
 	go func() {
-		for _, file := range flag.Args() {
+		for _, file := range filenames {
 			f <- file
 		}
 		close(f)
 	}()
 
-	for i, n := 0, len(flag.Args()); i != n; i++ {
+	for i, n := 0, len(filenames); i != n; i++ {
 		if fileBuffer := <-c; fileBuffer != nil {
 			totalBytes := fileBuffer.Len()
 			fmt.Fprintf(outfile, "\f\n%s,%d\n%s", fileBuffer.file,
@@ -191,9 +208,9 @@ func parseFiles(outfile *os.File) {
 func init() {
 	log.SetFlags(0)
 	flag.Parse()
-	if flag.NArg() == 0 {
-		log.Fatalf("Usage: %s [-f] [-a] [-h] [-o TagsFile] source.go ...\n",
-			os.Args[0])
+	if flag.NArg() == 0 && len(*fileList) == 0 {
+		log.Fatalf("Usage: %s  [-f] [-a] [-h] [-o TagsFile] " +
+		"[-i ListOfFilesFile] source.go ...\n", os.Args[0])
 	}
 }
 
